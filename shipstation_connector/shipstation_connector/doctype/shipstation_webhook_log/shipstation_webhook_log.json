@@ -1,0 +1,54 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "WEBHOOKLOG-.YYYY.-.MM.-.DD.-.####",
+ "creation": "2026-03-09 09:59:30.971191",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "processed",
+  "raw_body"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "processed",
+   "fieldtype": "Check",
+   "label": "Processed"
+  },
+  {
+   "fieldname": "raw_body",
+   "fieldtype": "Long Text",
+   "label": "Raw Body",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-10 12:42:09.997649",
+ "modified_by": "Administrator",
+ "module": "Shipstation Connector",
+ "name": "Shipstation Webhook Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

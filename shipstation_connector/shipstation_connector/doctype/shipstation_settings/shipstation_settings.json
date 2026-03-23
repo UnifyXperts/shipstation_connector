@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-02 15:09:13.797238",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "shipstation_endpoint",
+  "version",
+  "column_break_otxw",
+  "v2_api_key",
+  "v1_api_key",
+  "v1_api_secret",
+  "notify_seller",
+  "create_sales_order",
+  "update_tracking_info_on_marketplace",
+  "update_carriers",
+  "update_marketplace",
+  "section_break_rqxd",
+  "carriers",
+  "section_break_ywph",
+  "account_mapper"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "shipstation_endpoint",
+   "fieldtype": "Data",
+   "label": "Shipstation Endpoint"
+  },
+  {
+   "default": "V2",
+   "fieldname": "version",
+   "fieldtype": "Select",
+   "label": "Version",
+   "options": "V1\nV2"
+  },
+  {
+   "fieldname": "column_break_otxw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "v2_api_key",
+   "fieldtype": "Password",
+   "label": "V2 API Key",
+   "mandatory_depends_on": "eval:doc.version=='V2'"
+  },
+  {
+   "depends_on": "eval:doc.version=='V1'",
+   "fieldname": "v1_api_key",
+   "fieldtype": "Data",
+   "label": "V1 API Key",
+   "mandatory_depends_on": "eval:doc.version=='V1'"
+  },
+  {
+   "depends_on": "eval:doc.version=='V1'",
+   "fieldname": "v1_api_secret",
+   "fieldtype": "Data",
+   "label": "V1 API Secret",
+   "mandatory_depends_on": "eval:doc.version=='V1'"
+  },
+  {
+   "default": "0",
+   "fieldname": "create_sales_order",
+   "fieldtype": "Check",
+   "label": "Create Sales Order"
+  },
+  {
+   "fieldname": "section_break_rqxd",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "carriers",
+   "fieldtype": "Table",
+   "label": "Carriers",
+   "options": "Carriers"
+  },
+  {
+   "fieldname": "update_carriers",
+   "fieldtype": "Button",
+   "label": "Update Carriers"
+  },
+  {
+   "fieldname": "update_marketplace",
+   "fieldtype": "Button",
+   "label": "Update Marketplace"
+  },
+  {
+   "default": "0",
+   "fieldname": "notify_seller",
+   "fieldtype": "Check",
+   "label": "Notify Seller"
+  },
+  {
+   "fieldname": "section_break_ywph",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "account_mapper",
+   "fieldtype": "Table",
+   "label": "Account Mapper",
+   "options": "Account  Warehouse Mapper"
+  },
+  {
+   "default": "0",
+   "fieldname": "update_tracking_info_on_marketplace",
+   "fieldtype": "Check",
+   "label": "Update Tracking info on Marketplace"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-23 11:23:19.503123",
+ "modified_by": "Administrator",
+ "module": "Shipstation Connector",
+ "name": "Shipstation Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
