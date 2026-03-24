@@ -141,7 +141,13 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
+scheduler_events = {
+    
+    "cron":{
+        "*/15 * * * *":[
+            "shipstation_connector.shipstation_connector.api.shipstation_connector.sync_sales_order_to_shipstation"
+        ]
+    }
 # 	"all": [
 # 		"shipstation_connector.tasks.all"
 # 	],
@@ -157,7 +163,7 @@ doc_events = {
 # 	"monthly": [
 # 		"shipstation_connector.tasks.monthly"
 # 	],
-# }
+}
 
 # Testing
 # -------

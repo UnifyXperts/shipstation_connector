@@ -141,6 +141,9 @@ def send_so_to_shipstation():
     for so in sales_orders:
         create_so({"name": so.name})
         
+
+
+
 @frappe.whitelist(allow_guest=True)
 def shipstation_label_created():
     frappe.set_user("Administrator")
@@ -271,13 +274,8 @@ def shipstation_label_created():
 
 def get_or_create_sales_order(receipt_id):
 
-    existing_so = frappe.db.exists(
-        "Sales Order",
-        {"custom_marketplace_order_id": receipt_id}
-    )
-
-    if existing_so:
-        return existing_so
+    if frappe.db.exists("Sales Order", receipt_id):
+        return receipt_id
 
     settings = frappe.get_single("Etsy Settings")
 
@@ -340,6 +338,85 @@ def build_packages(so):
             }
         }
     ]
+
+def get_address_dict(address_name):
+    if not address_name:
+        frappe.throw("Customer Address is required")
+
+    address = frappe.get_doc("Address", address_name)
+    country_code = get_country_code(address.country)
+
+    return {
+        "name": address.address_title,
+        "phone": safe_phone(address.phone),
+        "email":address.email_id,
+        "address_line1": address.address_line1,
+        "address_line2": address.address_line2 or "",
+        "city_locality": address.city,
+        "state_province": get_state_code(address.state, country_code),
+        "postal_code": address.pincode,
+        "country_code": country_code
+    }
+
+
+def get_company_address_dict(company_name):
+
+    address_name = frappe.db.get_value(
+        "Dynamic Link",
+        {
+            "link_doctype": "Company",
+            "link_name": company_name,
+            "parenttype": "Address"
+        },
+        "parent"
+    )
+
+    if not address_name:
+        frappe.throw(f"No address linked to Company {company_name}")
+
+    address = frappe.get_doc("Address", address_name)
+    country_code = get_country_code(address.country)
+
+    return {
+        "name": company_name,
+        "phone": safe_phone(address.phone),
+        "address_line1": address.address_line1,
+        "address_line2": address.address_line2 or "",
+        "city_locality": address.city,
+        "state_province": get_state_code(address.state, country_code),
+        "postal_code": address.pincode,
+        "country_code": country_code
+    }
+
+
+def get_country_code(country_name):
+    code = frappe.db.get_value("Country", country_name, "code")
+
+    if not code:
+        frappe.throw(f"ISO Country Code not set for {country_name}")
+
+    return code
+
+
+def get_state_code(state_name, country_code):
+
+    if not state_name:
+        frappe.throw("State is required")
+
+    if country_code == "US":
+        state_name = state_name.strip().title()
+        state = us.states.lookup(state_name)
+
+        if state:
+            return state.abbr
+
+        if len(state_name) == 2:
+            return state_name.upper()
+
+        frappe.throw(f"Invalid US state: {state_name}")
+
+    return state_name
+
 
 @frappe.whitelist()
 def create_single_sales_order(receipt_id):

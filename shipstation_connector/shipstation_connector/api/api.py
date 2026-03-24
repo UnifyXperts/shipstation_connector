@@ -31,7 +31,6 @@ def create_and_set_addressv2(order_id, access_token):
     line2 = address.get("address_line2")
     line3 = address.get("address_line3")
 
-    # ✅ Check if address already exists
     existing_address = frappe.get_all(
         "Address",
         filters={
@@ -73,7 +72,6 @@ def create_and_set_addressv2(order_id, access_token):
         customer_address.insert(ignore_permissions=True)
         address_name = customer_address.name
 
-    # ✅ Get Sales Order
     sales_orders = frappe.get_all(
         "Sales Order",
         filters={"custom_marketplace_order_id": order_id},
@@ -85,14 +83,12 @@ def create_and_set_addressv2(order_id, access_token):
 
     sales_order_doc = frappe.get_doc("Sales Order", sales_orders[0].name)
 
-    # ✅ Skip if already set
     if (
         sales_order_doc.customer_address == address_name
         and sales_order_doc.shipping_address_name == address_name
     ):
         return "Already set, skipped"
 
-    # ✅ Use db_set (NO save)
     sales_order_doc.db_set({
         "customer_address": address_name,
         "shipping_address_name": address_name
@@ -112,7 +108,7 @@ def sync_addresses(access_token):
     )
 
     for so in sales_orders:
-        order_id = so.custom_marketplace_order_id  # ✅ FIXED
+        order_id = so.custom_marketplace_order_id
         try:
             create_and_set_addressv2(order_id, access_token)
         except Exception:
