@@ -14,7 +14,8 @@
    "default": "0",
    "fieldname": "processed",
    "fieldtype": "Check",
-   "label": "Processed"
+   "label": "Processed",
+   "read_only": 1
   },
   {
    "fieldname": "raw_body",
@@ -26,7 +27,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-10 12:42:09.997649",
+ "modified": "2026-03-30 09:24:07.616408",
  "modified_by": "Administrator",
  "module": "Shipstation Connector",
  "name": "Shipstation Webhook Log",

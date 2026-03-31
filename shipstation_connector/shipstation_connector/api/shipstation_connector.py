@@ -89,7 +89,7 @@ def create_so(payload):
             {
                 "carrier_id": carrier_row.carrier_id,
                 "service_code": carrier_row.service_code,
-                "external_shipment_id": so.name,
+                "external_shipment_id": so.custom_marketplace_order_id,
                 "create_sales_order": bool(config["create_sales_order"]),
                 "ship_to": ship_to,
                 "ship_from": ship_from,
@@ -148,124 +148,152 @@ def shipstation_label_created():
     raw_data = frappe.request.get_data(as_text=True)
 
     if not raw_data:
+        frappe.log_error("No data received", "ShipStation Webhook")
         return "No data received"
 
     try:
         payload = json.loads(raw_data)
-        shipstation_webhook_log=frappe.new_doc("Shipstation Webhook Log")
-        shipstation_webhook_log.raw_body=raw_data
-        shipstation_webhook_log.insert()
-        
+
+        log = frappe.new_doc("Shipstation Webhook Log")
+        log.raw_body = raw_data
+        log.insert(ignore_permissions=True)
+
     except Exception:
         frappe.log_error(raw_data, "ShipStation Invalid JSON")
         return "Invalid JSON"
 
     resource_url = payload.get("resource_url")
-    
+
     if not resource_url:
+        frappe.log_error(raw_data, "Missing resource_url")
         return "No resource_url"
 
     config = shipstation_config()
-    
 
-    response = requests.get(resource_url, headers=config["headers"], timeout=15)
-    label_data = response.json()
+    try:
+        response = requests.get(resource_url, headers=config["headers"], timeout=15)
+        label_data = response.json()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "ShipStation API Failed")
+        return "API Failed"
+
     frappe.log_error(frappe.as_json(label_data), "ShipStation Response")
 
-    labels = label_data.get("labels")
-    if not labels:
-        labels = [label_data]
+    labels = label_data.get("labels") or [label_data]
 
     for label in labels:
 
-        external_shipment_id = label.get("external_shipment_id")
-        tracking_number = label.get("tracking_number")
-        tracking_url = label.get("tracking_url")
-        carrier_name = label.get("carrier_code")
-        carrier_id = label.get("carrier_id")
+        try:
+            external_shipment_id = label.get("external_shipment_id")
+            tracking_number = label.get("tracking_number")
+            tracking_url = label.get("tracking_url")
+            carrier_name = label.get("carrier_code")
+            carrier_id = label.get("carrier_id")
 
-        if not external_shipment_id:
-            continue
+            if not external_shipment_id:
+                frappe.log_error(frappe.as_json(label), "Missing Shipment ID")
+                continue
 
-        so_name = get_or_create_sales_order(external_shipment_id)
+            # ✅ Get or create SO
+            so_name = get_or_create_sales_order(external_shipment_id)
 
-        
-        if not so_name:
-            continue
+            if not so_name:
+                frappe.log_error(external_shipment_id, "SO NOT FOUND")
+                continue
 
-        so = frappe.get_doc("Sales Order", so_name)
+            so = frappe.get_doc("Sales Order", so_name)
 
-        if so.docstatus == 0:
-            so.reload()
-            so.submit()
+            # ✅ Submit SO if draft
+            if so.docstatus == 0:
+                try:
+                    so.submit()
+                except Exception:
+                    frappe.log_error(frappe.get_traceback(), "SO Submit Failed")
+                    continue
 
-        existing_dn = frappe.db.get_value(
-            "Delivery Note Item",
-            {"against_sales_order": so.name},
-            "parent"
-        )
-
-        if existing_dn:
-            frappe.db.set_value(
-                "Sales Order",
-                so.name,
-                {"prevdoc": existing_dn},
-                update_modified=False
+            # ✅ Check existing DN
+            existing_dn = frappe.db.get_value(
+                "Delivery Note Item",
+                {"against_sales_order": so.name},
+                "parent"
             )
+
+            if existing_dn:
+                frappe.log_error(f"DN already exists for {so.name}", "DN SKIPPED")
+                continue
+
+            # ✅ Create DN
+            try:
+                dn = make_delivery_note(so.name)
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "make_delivery_note FAILED")
+                continue
+
+            # ✅ Set fields
+            dn.posting_date = nowdate()
+            dn.custom_tracking_number = tracking_number
+            dn.custom_tracking_url = tracking_url
+            dn.custom_linked_etsy_shiping_id = external_shipment_id
+            dn.custom_carrier_name = carrier_name
+            dn.custom_note_to_buyer = so.custom_note_from_seller
+            dn.custom_carrier_id = carrier_id
+            dn.custom_processed_webhook_url = resource_url
+
+            # ✅ Shipping cost
+            shipment_cost = label.get("shipment_cost", {})
+            shipment_amount = shipment_cost.get("amount")
+
+            if shipment_amount:
+                try:
+                    shipping_account = frappe.get_value(
+                        "Account",
+                        {"account_name": "Shipping Charges"},
+                        "name"
+                    )
+
+                    if shipping_account:
+                        dn.append("taxes", {
+                            "charge_type": "Actual",
+                            "account_head": shipping_account,
+                            "description": "ShipStation Shipping Cost",
+                            "tax_amount": shipment_amount
+                        })
+                except Exception:
+                    frappe.log_error(frappe.get_traceback(), "Shipping Tax Failed")
+
+            # ✅ Packages
+            packages = label.get("packages", [])
+
+            for pkg in packages:
+                dims = pkg.get("dimensions", {})
+                weight = pkg.get("weight", {})
+
+                dn.custom_uom_for_dimension = dims.get("unit")
+                dn.custom_uom_for_weight = weight.get("unit")
+
+                dn.append("custom_packages", {
+                    "length": dims.get("length") or 0,
+                    "width": dims.get("width") or 0,
+                    "height": dims.get("height") or 0,
+                    "weight": weight.get("value") or 0,
+                    "count": 1
+                })
+
+            # ✅ Save & Submit
+            try:
+                dn.save(ignore_permissions=True)
+                dn.submit()
+                frappe.db.commit()
+
+                frappe.log_error(f"DN CREATED: {dn.name}", "SUCCESS")
+
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "DN Save/Submit Failed")
+                continue
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "FULL LOOP FAILED")
             continue
-
-
-        dn = make_delivery_note(so.name)
-        dn.posting_date = nowdate()
-
-        dn.custom_tracking_number = tracking_number
-        dn.custom_tracking_url = tracking_url
-        dn.custom_linked_etsy_shiping_id = external_shipment_id
-        dn.custom_carrier_name = carrier_name
-        dn.custom_note_to_buyer = so.custom_note_from_seller
-        dn.custom_carrier_id = carrier_id
-        
-
-        shipment_cost = label.get("shipment_cost", {})
-        shipment_amount = shipment_cost.get("amount")
-
-        if shipment_amount:
-            dn.append("taxes", {
-                "charge_type": "Actual",
-                "account_head": shipping_account.account,
-                "description": "ShipStation Shipping Cost",
-                "tax_amount": shipment_amount
-            })
-
-
-
-        packages = label.get("packages", [])
-
-        for pkg in packages:
-            dims = pkg.get("dimensions", {})
-            weight = pkg.get("weight", {})
-
-
-            
-            weight_kg = (weight.get("value") or 0)
-
-            length_cm = (dims.get("length") or 0)
-            width_cm = (dims.get("width") or 0)
-            height_cm = (dims.get("height") or 0)
-            
-            dn.custom_uom_for_dimension=dims.get("unit")
-            dn.custom_uom_for_weight=weight.get("unit")
-            dn.append("custom_packages", {
-                "length": length_cm,
-                "width": width_cm,
-                "height": height_cm,
-                "weight": weight_kg,
-                "count": 1
-            })
-        dn.save(ignore_permissions=True)
-        dn.submit()
-    frappe.db.commit()
-    
 
     return "Webhook Processed"
 
@@ -999,3 +1027,123 @@ def sync_sales_order_to_shipstation():
     else:
         frappe.log_error("Auto Syncing of sales order not enabled","Auto Sync Error")
 
+def process_shipstation_logs_bg():
+
+    logs = frappe.get_all(
+        "Shipstation Webhook Log",
+        filters={"processed": 0},
+        fields=["name", "raw_body"],
+        order_by="creation asc"
+    )
+
+    if not logs:
+        frappe.log_error("No pending logs", "Shipstation BG Job")
+        return
+
+    for log in logs:
+        try:
+            raw = log.raw_body
+
+            payload = json.loads(raw) if isinstance(raw, str) else raw
+
+            process_shipstation_payload(payload)
+
+            frappe.db.set_value(
+                "Shipstation Webhook Log",
+                log.name,
+                "processed",
+                1
+            )
+
+            frappe.db.commit()
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"BG Sync Failed: {log.name}"
+            )
+
+            frappe.db.set_value(
+                "Shipstation Webhook Log",
+                log.name,
+                "processed",
+                0
+            )
+
+            frappe.db.commit()
+
+@frappe.whitelist()
+def trigger_shipstation_sync():
+    
+    frappe.enqueue(
+        "shipstation_connector.shipstation_connector.api.shipstation_connector.process_shipstation_logs_bg",
+        queue="long",
+        timeout=600
+    )
+
+    return "Shipstation sync started in background"
+
+def process_shipstation_payload(payload):
+
+    resource_url = payload.get("resource_url")
+
+    if not resource_url:
+        frappe.log_error(payload, "Missing resource_url")
+        return
+
+    config = shipstation_config()
+
+    try:
+        response = requests.get(resource_url, headers=config["headers"], timeout=15)
+        label_data = response.json()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "ShipStation API Failed")
+        return
+
+    labels = label_data.get("labels") or [label_data]
+
+    for label in labels:
+        try:
+            external_shipment_id = label.get("external_shipment_id")
+
+            if not external_shipment_id:
+                continue
+
+            so_name = get_or_create_sales_order(external_shipment_id)
+
+            if not so_name:
+                continue
+
+            so = frappe.get_doc("Sales Order", so_name)
+
+            if so.docstatus == 0:
+                try:
+                    so.submit()
+                except:
+                    continue
+
+            existing_dn = frappe.db.get_value(
+                "Delivery Note Item",
+                {"against_sales_order": so.name},
+                "parent"
+            )
+
+            if existing_dn:
+                continue
+
+            dn = make_delivery_note(so.name)
+
+            dn.posting_date = nowdate()
+            dn.custom_tracking_number = label.get("tracking_number")
+            dn.custom_tracking_url = label.get("tracking_url")
+            dn.custom_linked_etsy_shiping_id = external_shipment_id
+            dn.custom_processed_webhook_url = resource_url
+
+            dn.save(ignore_permissions=True)
+            dn.submit()
+
+            frappe.db.commit()
+
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Payload Processing Failed")
+            continue

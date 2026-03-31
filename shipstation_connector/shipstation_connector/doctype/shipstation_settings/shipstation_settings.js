@@ -40,6 +40,32 @@ frappe.ui.form.on("Shipstation Settings", {
 }
         });
 
+    },
+    sync_delivery_note: function(frm) {
+
+        frappe.call({
+            method: 'shipstation_connector.shipstation_connector.api.shipstation_connector.trigger_shipstation_sync',
+            freeze: true,
+            freeze_message: 'Syncing Delivery Notes from Shipstation...',
+
+            callback: function(r) {
+                frappe.msgprint({
+                    title: 'Success',
+                    message: 'Background sync started 🚀',
+                    indicator: 'green'
+                });
+            },
+
+            error: function() {
+                frappe.msgprint({
+                    title: 'Error',
+                    message: 'Sync failed to start',
+                    indicator: 'red'
+                });
+            }
+        });
+
     }
+    
 
 });

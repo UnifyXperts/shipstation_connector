@@ -17,6 +17,7 @@
   "update_tracking_info_on_marketplace",
   "sync_so_to_shipstation",
   "update_carriers",
+  "sync_delivery_note",
   "update_marketplace",
   "section_break_rqxd",
   "carriers",
@@ -125,13 +126,18 @@
    "fieldname": "sync_so_to_shipstation",
    "fieldtype": "Check",
    "label": "Sync SO to Shipstation"
+  },
+  {
+   "fieldname": "sync_delivery_note",
+   "fieldtype": "Button",
+   "label": "Sync Delivery Note"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-24 10:23:19.899130",
+ "modified": "2026-03-30 09:12:16.736784",
  "modified_by": "Administrator",
  "module": "Shipstation Connector",
  "name": "Shipstation Settings",
