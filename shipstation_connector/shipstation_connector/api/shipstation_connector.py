@@ -203,10 +203,12 @@ def shipstation_label_created():
 
             so = frappe.get_doc("Sales Order", so_name)
 
-            # ✅ Submit SO if draft
             if so.docstatus == 0:
                 try:
+                    so.save(ignore_permissions=True)
                     so.submit()
+                    so.db_set("status", "Deliver And Bill", update_modified=False)
+
                 except Exception:
                     frappe.log_error(frappe.get_traceback(), "SO Submit Failed")
                     continue
@@ -229,7 +231,6 @@ def shipstation_label_created():
                 frappe.log_error(frappe.get_traceback(), "make_delivery_note FAILED")
                 continue
 
-            # ✅ Set fields
             dn.posting_date = nowdate()
             dn.custom_tracking_number = tracking_number
             dn.custom_tracking_url = tracking_url
@@ -239,7 +240,6 @@ def shipstation_label_created():
             dn.custom_carrier_id = carrier_id
             dn.custom_processed_webhook_url = resource_url
 
-            # ✅ Shipping cost
             shipment_cost = label.get("shipment_cost", {})
             shipment_amount = shipment_cost.get("amount")
 
@@ -279,10 +279,13 @@ def shipstation_label_created():
                     "count": 1
                 })
 
-            # ✅ Save & Submit
             try:
                 dn.save(ignore_permissions=True)
                 dn.submit()
+                dn.db_set("per_billed", 100, update_modified=False)
+                dn.db_set("status", "Completed", update_modified=False)
+                so.db_set("status", "Deliver And Bill", update_modified=False)
+                
                 frappe.db.commit()
 
                 frappe.log_error(f"DN CREATED: {dn.name}", "SUCCESS")
