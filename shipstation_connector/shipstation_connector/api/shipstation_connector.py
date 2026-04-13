@@ -228,7 +228,7 @@ def shipstation_label_created():
             try:
                 dn = make_delivery_note(so.name)
             except Exception:
-                frappe.log_error(frappe.get_traceback(), "make_delivery_note FAILED")
+                frappe.log_error(str(frappe.get_traceback()), "make_delivery_note FAILED")
                 continue
 
             dn.posting_date = nowdate()
@@ -1013,22 +1013,65 @@ def get_state_code(state_name, country_code):
 def safe_phone(phone):
     return phone if phone else "NA"
 
+import frappe
+import traceback
+
 @frappe.whitelist(allow_guest=True)
 def sync_sales_order_to_shipstation():
     
-    settings = frappe.get_single("Shipstation Settings")
-    sync_so_to_shipstation=settings.sync_so_to_shipstation
-    
-    if sync_so_to_shipstation:
-        sales_orders=frappe.get_all("Sales Order",filters={
-            "custom_synced_to_shipstation":0
-        })
-        
-        
-        for so in sales_order:
-            create_so(so)
-    else:
-        frappe.log_error("Auto Syncing of sales order not enabled","Auto Sync Error")
+    try:
+        settings = frappe.get_single("Shipstation Settings")
+        sync_so_to_shipstation = settings.sync_so_to_shipstation
+
+        if not sync_so_to_shipstation:
+            frappe.log_error(
+                title="ShipStation Sync Disabled",
+                message="Auto syncing of Sales Orders to ShipStation is disabled in settings."
+            )
+            return
+
+        sales_orders = frappe.get_all(
+            "Sales Order",
+            filters={"custom_synced_to_shipstation": 0},
+            fields=["name"]
+        )
+
+        if not sales_orders:
+            frappe.log_error(
+                title="No Sales Orders Found",
+                message="No Sales Orders found that need syncing to ShipStation."
+            )
+            return
+
+        for so in sales_orders:
+            try:
+                create_so(so.get("name"))
+
+            except Exception as e:
+                frappe.log_error(
+                    title=f"ShipStation Sync Failed for SO: {so.get('name')}",
+                    message=f"""
+                                Error while syncing Sales Order: {so.get('name')}
+
+                                Error: {str(e)}
+
+                                Traceback:
+                                {traceback.format_exc()}
+                                """
+                                                )
+
+                                    except Exception as e:
+                                        frappe.log_error(
+                                            title="Critical Error in ShipStation Sync",
+                                            message=f"""
+                                Error in sync_sales_order_to_shipstation()
+
+                                Error: {str(e)}
+
+                                Traceback:
+                                {traceback.format_exc()}
+                                """
+                                        )
 
 def process_shipstation_logs_bg():
 
