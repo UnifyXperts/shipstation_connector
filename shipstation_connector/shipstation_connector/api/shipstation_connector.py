@@ -1016,6 +1016,9 @@ def safe_phone(phone):
 import frappe
 import traceback
 
+import frappe
+import traceback
+
 @frappe.whitelist(allow_guest=True)
 def sync_sales_order_to_shipstation():
     
@@ -1051,28 +1054,29 @@ def sync_sales_order_to_shipstation():
                 frappe.log_error(
                     title=f"ShipStation Sync Failed for SO: {so.get('name')}",
                     message=f"""
-                                Error while syncing Sales Order: {so.get('name')}
+Error while syncing Sales Order: {so.get('name')}
 
-                                Error: {str(e)}
+Error: {str(e)}
 
-                                Traceback:
-                                {traceback.format_exc()}
-                                """
-                                                )
+Traceback:
+{traceback.format_exc()}
+"""
+                )
 
-                                    except Exception as e:
-                                        frappe.log_error(
-                                            title="Critical Error in ShipStation Sync",
-                                            message=f"""
-                                Error in sync_sales_order_to_shipstation()
+    except Exception as e:
+        frappe.log_error(
+            title="Critical Error in ShipStation Sync",
+            message=f"""
+Error in sync_sales_order_to_shipstation()
 
-                                Error: {str(e)}
+Error: {str(e)}
 
-                                Traceback:
-                                {traceback.format_exc()}
-                                """
-                                        )
-
+Traceback:
+{traceback.format_exc()}
+"""
+        )
+        
+        
 def process_shipstation_logs_bg():
 
     logs = frappe.get_all(
