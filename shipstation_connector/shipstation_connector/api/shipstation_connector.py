@@ -1044,6 +1044,7 @@ def sync_sales_order_to_shipstation():
 
         for so in sales_orders:
             try:
+                frappe.log_error(f"processing {so.get("name")}")
                 create_so(so.get("name"))
 
             except Exception as e:
