@@ -713,7 +713,7 @@ def create_so(payload):
     
     if so.custom_synced_to_shipstation:
         frappe.log_error("","This sales order is already Synced to shipstation ,skipping..........")
-        continue
+        return
 
     ship_to = get_address_dict(so.customer_address)
     ship_from = get_company_address_dict(so.company)
