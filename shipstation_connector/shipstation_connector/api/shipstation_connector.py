@@ -712,8 +712,8 @@ def create_so(payload):
     so = frappe.get_doc("Sales Order", payload.get("name"))
     
     if so.custom_synced_to_shipstation:
-        frappe.msgprint("This sales order is already Synced to shipstation ,skipping..........")
-        return
+        frappe.log_error("","This sales order is already Synced to shipstation ,skipping..........")
+        continue
 
     ship_to = get_address_dict(so.customer_address)
     ship_from = get_company_address_dict(so.company)
@@ -781,7 +781,7 @@ def create_so(payload):
         "shipments": [
             {
                 "validate_address": "no_validation",
-                "external_shipment_id": so.name,
+                "external_shipment_id": so.custom_marketplace_order_id,
                 "carrier_id": carrier_row.carrier_id,
                 "create_sales_order": bool(config["create_sales_order"]),
                 "store_id": None,
@@ -806,7 +806,6 @@ def create_so(payload):
                     "amount": float(so.total_taxes_and_charges or 0)
                 },
 
-                # ✅ Correct date mapping
                 "ship_by_date": delivery_date_iso,
                 "ship_date": shipment_date,
                 "order_date": order_date,
@@ -1012,9 +1011,6 @@ def get_state_code(state_name, country_code):
 
 def safe_phone(phone):
     return phone if phone else "NA"
-
-import frappe
-import traceback
 
 import frappe
 import traceback
