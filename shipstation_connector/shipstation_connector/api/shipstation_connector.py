@@ -59,60 +59,7 @@ def shipstation_config():
     }
 
 
-@frappe.whitelist()
-def create_so(payload):
 
-    if isinstance(payload, str):
-        payload = frappe.parse_json(payload)
-
-    config = shipstation_config()
-
-    so = frappe.get_doc("Sales Order", payload.get("name"))
-
-    ship_to = get_address_dict(so.customer_address)
-    ship_from = get_company_address_dict(so.company)
-
-    shipment_items = build_shipment_items(so)
-
-    settings = frappe.get_single("Shipstation Settings")
-
-    carrier_row = next(
-        (c for c in settings.carriers if c.is_active and c.is_default),
-        None
-    )
-
-    if not carrier_row:
-        frappe.throw("No active default carrier found in Shipstation Settings")
-
-    shipstation_payload = {
-        "shipments": [
-            {
-                "carrier_id": carrier_row.carrier_id,
-                "service_code": carrier_row.service_code,
-                "external_shipment_id": so.custom_marketplace_order_id,
-                "create_sales_order": bool(config["create_sales_order"]),
-                "ship_to": ship_to,
-                "ship_from": ship_from,
-                "packages": build_packages(so),
-                "items": shipment_items,
-                "order": build_order_payload(so)
-            }
-        ]
-    }
-
-    url = f"{config['base_url']}/shipments"
-
-    response = requests.post(
-        url,
-        headers=config["headers"],
-        json=shipstation_payload,
-        timeout=30
-    )
-
-    if response.status_code not in (200, 201):
-        frappe.throw(response.text)
-
-    return response.json()
 
 @frappe.whitelist()
 def update_carriers():
@@ -623,7 +570,7 @@ def create_single_sales_order(receipt_id):
 
         return {
             "status": "error",
-            "message": "Unexpected error occurred. Check Error Log."
+            "message": str(frappe.get_traceback())
         }
 
 def check_address_from_shipstation(order_id):
@@ -699,20 +646,23 @@ def create_address_if_not_exists(customer, receipt):
     address.insert(ignore_permissions=True)
       
 @frappe.whitelist()
-def create_so(payload):
+def create_so(doc=None,method=None,payload=None):
 
     import frappe
     import requests
     from datetime import datetime
-
-    if isinstance(payload, str):
-        payload = frappe.parse_json(payload)
-
+    
     config = shipstation_config()
-    so = frappe.get_doc("Sales Order", payload.get("name"))
+    
+    if isinstance(payload, dict):
+        so = frappe.get_doc("Sales Order", payload.get("name"))
+    else:
+        so = payload
+
+        # so = frappe.get_doc("Sales Order", payload.get("name"))
     
     if so.custom_synced_to_shipstation:
-        frappe.log_error("","This sales order is already Synced to shipstation ,skipping..........")
+        frappe.log_error("Sync Error","This sales order is already Synced to shipstation ,skipping..........")
         return
 
     ship_to = get_address_dict(so.customer_address)
@@ -726,7 +676,7 @@ def create_so(payload):
     )
 
     if not carrier_row:
-        frappe.throw("No active default carrier found in Shipstation Settings")
+        frappe.log_error("No active default carrier found in Shipstation Settings","Carrier Error")
 
     # -----------------------------
     # Helper: Convert to datetime
@@ -764,12 +714,10 @@ def create_so(payload):
 
     shipment_date = ship_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Order Date (Date Paid)
     payment_dt = to_datetime(so.custom_payment_date)
     if payment_dt:
         order_date = payment_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Hold Until
     hold_dt = to_datetime(getattr(so, "custom_hold_until", None))
     if hold_dt:
         hold_until_date = hold_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -822,11 +770,9 @@ def create_so(payload):
     # -----------------------------
     # API Call
     # -----------------------------
-    so.custom_synced_to_shipstation = 1
-    so.save(ignore_permissions=True)
+    # so.save(ignore_permissions=True)
 
     url = f"{config['base_url']}/shipments"
-
     response = requests.post(
         url,
         headers=config["headers"],
@@ -835,15 +781,17 @@ def create_so(payload):
     )
 
     if response.status_code not in (200, 201):
-        so.custom_synced_to_shipstation = 0
-        so.save(ignore_permissions=True)
+        # so.save(ignore_permissions=True)
         frappe.throw(f"ShipStation API Error: {response.text}")
 
     if hasattr(so, 'custom_shipstation_response'):
         so.custom_shipstation_response = frappe.as_json(response.json())
-        so.save(ignore_permissions=True)
+    
+    so.custom_synced_to_shipstation = 1
+    so.db_update()
+    # frappe.db.commit()
 
-    return response.json()
+    return response.status_code,response.json()
 
 
 def build_shipment_items(so):
@@ -1044,35 +992,34 @@ def sync_sales_order_to_shipstation():
 
         for so in sales_orders:
             try:
-                frappe.log_error("processing",f"processing {so.get("name")}")
-                create_so({"name": so.get("name")})
+                status_code, response = create_so(doc=None,method=None,payload={"name": so.get("name")})
+                frappe.log_error("processed", f"{response} {status_code}")
+
+                if status_code in (200, 201):
+                    frappe.db.set_value(
+                        "Sales Order",
+                        so.get("name"),
+                        "custom_synced_to_shipstation",
+                        1
+                    )
+                    frappe.db.commit()
 
             except Exception as e:
                 frappe.log_error(
                     title=f"ShipStation Sync Failed for SO: {so.get('name')}",
                     message=f"""
-Error while syncing Sales Order: {so.get('name')}
+            Error while syncing Sales Order: {so.get('name')}
 
-Error: {str(e)}
+            Error: {str(e)}
 
-Traceback:
-{traceback.format_exc()}
-"""
+            Traceback:
+            {traceback.format_exc()}
+            """
                 )
-
     except Exception as e:
-        frappe.log_error(
-            title="Critical Error in ShipStation Sync",
-            message=f"""
-Error in sync_sales_order_to_shipstation()
+        frappe.log_error("Error", str(e))
 
-Error: {str(e)}
 
-Traceback:
-{traceback.format_exc()}
-"""
-        )
-        
         
 def process_shipstation_logs_bg():
 

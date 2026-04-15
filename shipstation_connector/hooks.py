@@ -134,7 +134,8 @@ app_license = "mit"
 
 doc_events = {
 	"Sales Order": {
-		"after_insert": "shipstation_connector.shipstation_connector.api.api.create_and_set_address"
+		"after_insert": ["shipstation_connector.shipstation_connector.api.api.create_and_set_address",
+                   "shipstation_connector.shipstation_connector.api.shipstation_connector.create_so"]
 	}
 }
 

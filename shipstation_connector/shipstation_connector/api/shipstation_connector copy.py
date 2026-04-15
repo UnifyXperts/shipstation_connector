@@ -669,7 +669,7 @@ def create_single_sales_order(receipt_id):
 
         return {
             "status": "error",
-            "message": "Unexpected error occurred. Check Error Log."
+            "message": str(frappe.get_traceback())
         }
 
 def check_address_from_shipstation(order_id):
