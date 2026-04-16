@@ -10,6 +10,7 @@ import pytz
 
 
 settings = frappe.get_single("Shipstation Settings")
+enable_webhook=settings.enable_webhook
 BASE_URL = settings.shipstation_endpoint
 API_KEY = settings.get_password("v2_api_key")
 NOTIFY_SELLER = settings.notify_seller
@@ -90,6 +91,9 @@ def send_so_to_shipstation():
         
 @frappe.whitelist(allow_guest=True)
 def shipstation_label_created():
+    
+    
+    
     frappe.set_user("Administrator")
 
     raw_data = frappe.request.get_data(as_text=True)
@@ -110,6 +114,10 @@ def shipstation_label_created():
         return "Invalid JSON"
 
     resource_url = payload.get("resource_url")
+    
+    if not enable_webhook:
+        frappe.log_error("Shipstation Webhook Error","Webhook is not enabled in shipstation settings")
+        return
 
     if not resource_url:
         frappe.log_error(raw_data, "Missing resource_url")

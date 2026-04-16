@@ -13,6 +13,7 @@
   "v1_api_key",
   "v1_api_secret",
   "notify_seller",
+  "enable_webhook",
   "create_sales_order",
   "update_tracking_info_on_marketplace",
   "sync_so_to_shipstation",
@@ -131,13 +132,19 @@
    "fieldname": "sync_delivery_note",
    "fieldtype": "Button",
    "label": "Sync Delivery Note"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_webhook",
+   "fieldtype": "Check",
+   "label": "Enable Webhook"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-30 09:12:16.736784",
+ "modified": "2026-04-16 09:45:09.871838",
  "modified_by": "Administrator",
  "module": "Shipstation Connector",
  "name": "Shipstation Settings",
