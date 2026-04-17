@@ -654,7 +654,7 @@ def create_address_if_not_exists(customer, receipt):
     address.insert(ignore_permissions=True)
       
 @frappe.whitelist()
-def create_so(doc=None,method=None,payload=None):
+def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
 
     import frappe
     import requests
@@ -664,12 +664,17 @@ def create_so(doc=None,method=None,payload=None):
     
     if isinstance(payload, dict):
         so = frappe.get_doc("Sales Order", payload.get("name"))
+        
+    elif isinstance(payload, str):
+        so = frappe.get_doc("Sales Order", payload)
     else:
         so = payload
 
         # so = frappe.get_doc("Sales Order", payload.get("name"))
+        
+    is_synced=so.custom_synced_to_shipstation or synced_to_shipstation
     
-    if so.custom_synced_to_shipstation:
+    if is_synced:
         frappe.log_error("Sync Error","This sales order is already Synced to shipstation ,skipping..........")
         return
 
