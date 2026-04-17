@@ -662,15 +662,27 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     
     config = shipstation_config()
     
+    import json
+
     if isinstance(payload, dict):
         so = frappe.get_doc("Sales Order", payload.get("name"))
-        
+
     elif isinstance(payload, str):
-        so = frappe.get_doc("Sales Order", payload)
-    else:
+        try:
+            payload_dict = json.loads(payload)
+            so = frappe.get_doc("Sales Order", payload_dict.get("name"))
+        except:
+            # fallback: maybe it's just name like "SAL-ORD-0001"
+            so = frappe.get_doc("Sales Order", payload)
+
+    elif payload:
         so = payload
 
-        # so = frappe.get_doc("Sales Order", payload.get("name"))
+    elif doc:
+        so = doc
+
+    else:
+        frappe.throw("No valid Sales Order provided")
         
     is_synced=so.custom_synced_to_shipstation or synced_to_shipstation
     
