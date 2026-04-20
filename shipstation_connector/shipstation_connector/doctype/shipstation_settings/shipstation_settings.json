@@ -76,7 +76,7 @@
    "default": "0",
    "fieldname": "create_sales_order",
    "fieldtype": "Check",
-   "label": "Create Sales Order"
+   "label": "Create Shipments"
   },
   {
    "fieldname": "section_break_rqxd",
@@ -144,7 +144,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-04-16 09:45:09.871838",
+ "modified": "2026-04-20 14:56:05.432605",
  "modified_by": "Administrator",
  "module": "Shipstation Connector",
  "name": "Shipstation Settings",

@@ -10,6 +10,9 @@ import pytz
 
 
 settings = frappe.get_single("Shipstation Settings")
+
+etsy_settings = frappe.get_single("Etsy Settings")
+address_creation_permission=etsy_settings.create_address_before_sending_to_shipstation
 enable_webhook=settings.enable_webhook
 BASE_URL = settings.shipstation_endpoint
 API_KEY = settings.get_password("v2_api_key")
@@ -398,7 +401,7 @@ def create_single_sales_order(receipt_id):
         # -----------------------------
         # ADDRESS CHECK
         # -----------------------------
-        is_id_present = check_address_from_shipstation(order_id=receipt_id)
+        # is_id_present = check_address_from_shipstation(order_id=receipt_id)
 
         if not is_id_present:
             return {
@@ -527,7 +530,7 @@ def create_single_sales_order(receipt_id):
                 })
 
             so.save(ignore_permissions=True)
-
+            create_address_if_not_exists(customer, receipt)
             return {
                 "status": "success",
                 "message": "Sales Order Updated",
@@ -562,6 +565,8 @@ def create_single_sales_order(receipt_id):
             })
 
         sales_order.insert(ignore_permissions=True)
+        
+        create_address_if_not_exists(customer, receipt)
         sales_order.submit()
 
         return {
@@ -630,7 +635,7 @@ def create_address_if_not_exists(customer, receipt):
     if not receipt.get("first_line"):
         return
 
-    address_title = f"{customer}-Etsy"
+    address_title = f"{customer}-Shipping"
 
     if frappe.db.exists("Address", address_title):
         return
@@ -684,13 +689,13 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     else:
         frappe.throw("No valid Sales Order provided")
         
-    is_synced=so.custom_synced_to_shipstation or synced_to_shipstation
+    is_synced=so.custom_synced_to_shipstation
     
     if is_synced:
         frappe.log_error("Sync Error","This sales order is already Synced to shipstation ,skipping..........")
         return
 
-    ship_to = get_address_dict(so.customer_address)
+    ship_to = get_address_dict(so,so.customer,so.customer_address,so.custom_marketplace_order_id)
     ship_from = get_company_address_dict(so.company)
 
     settings = frappe.get_single("Shipstation Settings")
@@ -747,6 +752,7 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     if hold_dt:
         hold_until_date = hold_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # create_address_if_not_exists(customer, receipt)
     # -----------------------------
     # Payload
     # -----------------------------
@@ -899,17 +905,52 @@ def get_shipping_amount(so):
                 break
     
     return shipping_amount
-def get_address_dict(address_name):
+
+def get_address_dict(so, customer,address_name, receipt_id):
+    BASE_URL = "https://openapi.etsy.com/v3/"
+    
+    # address_name=None
+
     if not address_name:
-        frappe.throw("Customer Address is required")
+
+        if address_creation_permission:
+
+            settings = frappe.get_single("Etsy Settings")
+
+            response = requests.get(
+                f"{BASE_URL}application/shops/{settings.shop_id}/receipts/{receipt_id}",
+                headers={
+                    "Authorization": f"Bearer {settings.get_password('access_token')}",
+                    "x-api-key": settings.client_id
+                }
+            )
+            frappe.log_error(f"{BASE_URL}application/shops/{settings.shop_id}/receipts/{receipt_id}", "Etsy Response")
+            
+            if response.status_code == 200:
+                receipt_data = response.json()
+
+                address_name = create_and_set_address(customer, receipt_data)
+                so.customer_address=address_name
+                so.save()
+
+                if not address_name:
+                    frappe.throw("Failed to create address")
+                    
+
+            else:
+                # frappe.msgprint(response.text)
+                frappe.log_error(response.text, "Etsy Response")
+
+        else:
+            frappe.throw("Customer Address is required")
 
     address = frappe.get_doc("Address", address_name)
     country_code = get_country_code(address.country)
 
     return {
-        "name": address.address_title,
+        "name": customer,
         "phone": safe_phone(address.phone),
-        "email":address.email_id,
+        "email": address.email_id,
         "address_line1": address.address_line1,
         "address_line2": address.address_line2 or "",
         "city_locality": address.city,
@@ -960,7 +1001,7 @@ def get_country_code(country_name):
     if not code:
         frappe.throw(f"ISO Country Code not set for {country_name}")
 
-    return code
+    return code.upper()
 
 
 def get_state_code(state_name, country_code):
@@ -1166,3 +1207,35 @@ def process_shipstation_payload(payload):
         except Exception:
             frappe.log_error(frappe.get_traceback(), "Payload Processing Failed")
             continue
+        
+
+def create_and_set_address(customer, receipt):
+
+    if not receipt.get("first_line"):
+        return None
+
+    address_title = f"{customer}-Shipping"
+
+    # ✅ If exists, return it
+    if frappe.db.exists("Address", address_title):
+        return address_title
+
+    address = frappe.get_doc({
+        "doctype": "Address",
+        "address_title": address_title,
+        "address_type": "Shipping",
+        "address_line1": receipt.get("first_line"),
+        "address_line2": receipt.get("second_line"),
+        "city": receipt.get("city"),
+        "state": receipt.get("state"),
+        "pincode": receipt.get("zip"),
+        "country": frappe.db.get_value("Country", {"code": receipt.get("country_iso")}, "name"),
+        "links": [{
+            "link_doctype": "Customer",
+            "link_name": customer
+        }]
+    })
+
+    address.insert(ignore_permissions=True)
+    
+    return address.name
