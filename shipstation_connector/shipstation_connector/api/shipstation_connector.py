@@ -201,23 +201,23 @@ def shipstation_label_created():
             shipment_cost = label.get("shipment_cost", {})
             shipment_amount = shipment_cost.get("amount")
 
-            if shipment_amount:
-                try:
-                    shipping_account = frappe.get_value(
-                        "Account",
-                        {"account_name": "Shipping Charges"},
-                        "name"
-                    )
+            # if shipment_amount:
+            #     try:
+            #         shipping_account = frappe.get_value(
+            #             "Account",
+            #             {"account_name": "Shipping Charges"},
+            #             "name"
+            #         )
 
-                    if shipping_account:
-                        dn.append("taxes", {
-                            "charge_type": "Actual",
-                            "account_head": shipping_account,
-                            "description": "ShipStation Shipping Cost",
-                            "tax_amount": shipment_amount
-                        })
-                except Exception:
-                    frappe.log_error(frappe.get_traceback(), "Shipping Tax Failed")
+            #         if shipping_account:
+            #             dn.append("taxes", {
+            #                 "charge_type": "Actual",
+            #                 "account_head": shipping_account,
+            #                 "description": "ShipStation Shipping Cost",
+            #                 "tax_amount": shipment_amount
+            #             })
+            #     except Exception:
+            #         frappe.log_error(frappe.get_traceback(), "Shipping Tax Failed")
 
             # ✅ Packages
             packages = label.get("packages", [])
@@ -893,6 +893,7 @@ def build_packages(so):
 
     packages.append(package)
     return packages
+
 def get_shipping_amount(so):
     """Extract shipping amount from taxes"""
     shipping_amount = 0
@@ -909,7 +910,6 @@ def get_shipping_amount(so):
 def get_address_dict(so, customer,address_name, receipt_id):
     BASE_URL = "https://openapi.etsy.com/v3/"
     
-    # address_name=None
 
     if not address_name:
 
@@ -938,8 +938,7 @@ def get_address_dict(so, customer,address_name, receipt_id):
                     
 
             else:
-                # frappe.msgprint(response.text)
-                frappe.log_error(response.text, "Etsy Response")
+                 frappe.log_error(response.text, "Etsy Response")
 
         else:
             frappe.throw("Customer Address is required")
