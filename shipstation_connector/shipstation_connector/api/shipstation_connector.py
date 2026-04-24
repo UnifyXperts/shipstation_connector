@@ -403,14 +403,14 @@ def create_single_sales_order(receipt_id):
         # -----------------------------
         # is_id_present = check_address_from_shipstation(order_id=receipt_id)
 
-        if not is_id_present:
-            return {
-                "status": "fail",
-                "message": "Address Not Found in Shipstation, Skipping..."
-            }
+        # if not is_id_present:
+        #     return {
+        #         "status": "fail",
+        #         "message": "Address Not Found in Shipstation, Skipping..."
+        #     }
 
         create_contact_if_not_exists(customer, receipt_data)
-        create_address_if_not_exists(customer, receipt_data)
+        # create_address_if_not_exists(customer, receipt_data)
 
         # -----------------------------
         # DATES
