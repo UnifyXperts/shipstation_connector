@@ -238,6 +238,7 @@ def shipstation_label_created():
                 })
 
             try:
+                dn.custom_shipping_cost=shipment_amount
                 dn.save(ignore_permissions=True)
                 dn.submit()
                 dn.db_set("per_billed", 100, update_modified=False)
