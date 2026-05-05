@@ -152,7 +152,6 @@ def shipstation_label_created():
                 frappe.log_error(frappe.as_json(label), "Missing Shipment ID")
                 continue
 
-            # ✅ Get or create SO
             so_name = get_or_create_sales_order(external_shipment_id)
 
             if not so_name:
@@ -171,7 +170,6 @@ def shipstation_label_created():
                     frappe.log_error(frappe.get_traceback(), "SO Submit Failed")
                     continue
 
-            # ✅ Check existing DN
             existing_dn = frappe.db.get_value(
                 "Delivery Note Item",
                 {"against_sales_order": so.name},
@@ -182,7 +180,6 @@ def shipstation_label_created():
                 frappe.log_error(f"DN already exists for {so.name}", "DN SKIPPED")
                 continue
 
-            # ✅ Create DN
             try:
                 dn = make_delivery_note(so.name)
             except Exception:
@@ -199,7 +196,10 @@ def shipstation_label_created():
             dn.custom_processed_webhook_url = resource_url
 
             shipment_cost = label.get("shipment_cost", {})
-            shipment_amount = shipment_cost.get("amount")
+            shipment_amount = shipment_cost.get("amount",0)
+            
+            insurance_cost = label.get("insurance_cost", {})
+            insurance_amount = insurance_cost.get("amount",0)
 
             # if shipment_amount:
             #     try:
@@ -238,7 +238,7 @@ def shipstation_label_created():
                 })
 
             try:
-                dn.custom_shipping_cost=shipment_amount
+                dn.custom_shipping_cost=shipment_amount+insurance_amount
                 dn.save(ignore_permissions=True)
                 dn.submit()
                 dn.db_set("per_billed", 100, update_modified=False)
@@ -678,7 +678,6 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
             payload_dict = json.loads(payload)
             so = frappe.get_doc("Sales Order", payload_dict.get("name"))
         except:
-            # fallback: maybe it's just name like "SAL-ORD-0001"
             so = frappe.get_doc("Sales Order", payload)
 
     elif payload:
@@ -798,11 +797,12 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
             }
         ]
     }
-
+  
     # -----------------------------
     # API Call
     # -----------------------------
     # so.save(ignore_permissions=True)
+    
 
     url = f"{config['base_url']}/shipments"
     response = requests.post(
