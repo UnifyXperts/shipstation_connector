@@ -5,7 +5,7 @@ import us
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
 import requests
 from frappe.utils import nowdate
-from datetime import datetime
+from datetime import datetime,date
 import pytz
 
 
@@ -664,7 +664,7 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
 
     import frappe
     import requests
-    from datetime import datetime
+    from datetime import datetime,date
     
     config = shipstation_config()
     
@@ -712,11 +712,35 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     # Helper: Convert to datetime
     # -----------------------------
     def to_datetime(val):
+
         if not val:
             return None
+
+        # Already datetime
         if isinstance(val, datetime):
             return val
-        return datetime.combine(val, datetime.min.time())
+
+        # If string
+        if isinstance(val, str):
+
+            try:
+                val = datetime.strptime(
+                    val,
+                    "%Y-%m-%d"
+                ).date()
+
+            except Exception:
+                return None
+
+        # If date object
+        if isinstance(val, date):
+
+            return datetime.combine(
+                val,
+                datetime.min.time()
+            )
+
+        return None
 
     # -----------------------------
     # Date Handling (FIXED)
@@ -751,7 +775,12 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     hold_dt = to_datetime(getattr(so, "custom_hold_until", None))
     if hold_dt:
         hold_until_date = hold_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
+    
+    external_shipment_id = (
+    so.name
+    if "erpnext" in (so.custom_marketplace or "").lower()
+    else so.custom_marketplace_order_id
+)
     # create_address_if_not_exists(customer, receipt)
     # -----------------------------
     # Payload
@@ -760,8 +789,9 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
         "shipments": [
             {
                 "validate_address": "no_validation",
-                "external_shipment_id": so.custom_marketplace_order_id,
-                "carrier_id": carrier_row.carrier_id,
+                "external_shipment_id": external_shipment_id ,
+                # "carrier_id": carrier_row.carrier_id,
+                "carrier_id":"se-5542533",
                 "create_sales_order": bool(config["create_sales_order"]),
                 "store_id": None,
                 "notes_from_buyer": so.po_no or "",
@@ -802,8 +832,7 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     # API Call
     # -----------------------------
     # so.save(ignore_permissions=True)
-    
-
+        
     url = f"{config['base_url']}/shipments"
     response = requests.post(
         url,
@@ -813,15 +842,56 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     )
 
     if response.status_code not in (200, 201):
-        # so.save(ignore_permissions=True)
-        frappe.throw(f"ShipStation API Error: {response.text}")
 
-    if hasattr(so, 'custom_shipstation_response'):
-        so.custom_shipstation_response = frappe.as_json(response.json())
+            frappe.log_error(
+                title="ShipStation API Error",
+                message=f"""
+        STATUS CODE:
+        {response.status_code}
+
+        RESPONSE:
+        {response.text}
+
+        PAYLOAD:
+        {frappe.as_json(shipstation_payload)}
+        """
+            )
+
+            frappe.throw(
+                f"ShipStation API Error: {response.text}"
+            )
+
+        # =====================================
+        # SUCCESS
+        # =====================================
+
+    if response.status_code in (200, 201):
+
+        frappe.log_error(
+            title="ShipStation Success",
+            message=f"""
+    STATUS CODE:
+    {response.status_code}
+
+    RESPONSE:
+    {response.text}
+
+    SALES ORDER:
+    {so.name}
+    """
+        )
+
+        so.custom_synced_to_shipstation = 1
+
+        if hasattr(so, "custom_shipstation_response"):
+
+            so.custom_shipstation_response = frappe.as_json(
+                response.json()
+            )
+
+        so.db_update()
     
-    so.custom_synced_to_shipstation = 1
     so.db_update()
-    # frappe.db.commit()
 
     return response.status_code,response.json()
 
