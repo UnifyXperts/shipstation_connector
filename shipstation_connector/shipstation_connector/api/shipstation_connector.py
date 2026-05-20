@@ -791,7 +791,6 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
                 "validate_address": "no_validation",
                 "external_shipment_id": external_shipment_id ,
                 "carrier_id": carrier_row.carrier_id,
-                # "carrier_id":"se-5542533",
                 "create_sales_order": bool(config["create_sales_order"]),
                 "store_id": None,
                 "notes_from_buyer": so.po_no or "",
