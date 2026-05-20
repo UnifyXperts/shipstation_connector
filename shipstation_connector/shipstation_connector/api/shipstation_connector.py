@@ -790,8 +790,8 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
             {
                 "validate_address": "no_validation",
                 "external_shipment_id": external_shipment_id ,
-                # "carrier_id": carrier_row.carrier_id,
-                "carrier_id":"se-5542533",
+                "carrier_id": carrier_row.carrier_id,
+                # "carrier_id":"se-5542533",
                 "create_sales_order": bool(config["create_sales_order"]),
                 "store_id": None,
                 "notes_from_buyer": so.po_no or "",
@@ -832,7 +832,8 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     # API Call
     # -----------------------------
     # so.save(ignore_permissions=True)
-        
+    
+    
     url = f"{config['base_url']}/shipments"
     response = requests.post(
         url,
