@@ -20,6 +20,8 @@
   "update_carriers",
   "sync_delivery_note",
   "update_marketplace",
+  "section_break_jrin",
+  "table_owiy",
   "section_break_rqxd",
   "carriers",
   "section_break_ywph",
@@ -138,13 +140,22 @@
    "fieldname": "enable_webhook",
    "fieldtype": "Check",
    "label": "Enable Webhook"
+  },
+  {
+   "fieldname": "section_break_jrin",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "table_owiy",
+   "fieldtype": "Table",
+   "options": "Marketplace Order Id Mapping"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-04-20 14:56:05.432605",
+ "modified": "2026-06-03 15:36:39.036744",
  "modified_by": "Administrator",
  "module": "Shipstation Connector",
  "name": "Shipstation Settings",

@@ -94,170 +94,463 @@ def send_so_to_shipstation():
         
 @frappe.whitelist(allow_guest=True)
 def shipstation_label_created():
-    
-    
-    
+
     frappe.set_user("Administrator")
 
     raw_data = frappe.request.get_data(as_text=True)
 
     if not raw_data:
-        frappe.log_error("No data received", "ShipStation Webhook")
+        frappe.log_error(
+            "No data received",
+            "ShipStation Webhook"
+        )
         return "No data received"
 
     try:
+
         payload = json.loads(raw_data)
 
-        log = frappe.new_doc("Shipstation Webhook Log")
+        log = frappe.new_doc(
+            "Shipstation Webhook Log"
+        )
+
         log.raw_body = raw_data
+
         log.insert(ignore_permissions=True)
 
     except Exception:
-        frappe.log_error(raw_data, "ShipStation Invalid JSON")
+
+        frappe.log_error(
+            raw_data,
+            "ShipStation Invalid JSON"
+        )
+
         return "Invalid JSON"
 
     resource_url = payload.get("resource_url")
-    
+
+    # -------------------------------------------------
+    # Webhook Enabled Check
+    # -------------------------------------------------
+
     if not enable_webhook:
-        frappe.log_error("Shipstation Webhook Error","Webhook is not enabled in shipstation settings")
-        return
+
+        frappe.log_error(
+            "Webhook is not enabled in shipstation settings",
+            "Shipstation Webhook Error"
+        )
+
+        return "Webhook Disabled"
 
     if not resource_url:
-        frappe.log_error(raw_data, "Missing resource_url")
+
+        frappe.log_error(
+            raw_data,
+            "Missing resource_url"
+        )
+
         return "No resource_url"
 
     config = shipstation_config()
 
+    # -------------------------------------------------
+    # Fetch Label Data
+    # -------------------------------------------------
+
     try:
-        response = requests.get(resource_url, headers=config["headers"], timeout=15)
+
+        response = requests.get(
+            resource_url,
+            headers=config["headers"],
+            timeout=15
+        )
+
         label_data = response.json()
+
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "ShipStation API Failed")
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "ShipStation API Failed"
+        )
+
         return "API Failed"
 
-    frappe.log_error(frappe.as_json(label_data), "ShipStation Response")
+    frappe.log_error(
+        frappe.as_json(label_data),
+        "ShipStation Response"
+    )
 
     labels = label_data.get("labels") or [label_data]
+
+    # -------------------------------------------------
+    # Loop Labels
+    # -------------------------------------------------
 
     for label in labels:
 
         try:
-            external_shipment_id = label.get("external_shipment_id")
-            tracking_number = label.get("tracking_number")
-            tracking_url = label.get("tracking_url")
-            carrier_name = label.get("carrier_code")
-            carrier_id = label.get("carrier_id")
+
+            external_shipment_id = (
+                label.get("external_shipment_id")
+            )
+
+            tracking_number = (
+                label.get("tracking_number")
+            )
+
+            tracking_url = (
+                label.get("tracking_url")
+            )
+
+            carrier_name = (
+                label.get("carrier_code")
+            )
+
+            carrier_id = (
+                label.get("carrier_id")
+            )
 
             if not external_shipment_id:
-                frappe.log_error(frappe.as_json(label), "Missing Shipment ID")
+
+                frappe.log_error(
+                    frappe.as_json(label),
+                    "Missing Shipment ID"
+                )
+
                 continue
 
-            so_name = get_or_create_sales_order(external_shipment_id)
+            # -------------------------------------------------
+            # Get/Create SO
+            # -------------------------------------------------
+
+            so_name = get_or_create_sales_order(
+                external_shipment_id
+            )
 
             if not so_name:
-                frappe.log_error(external_shipment_id, "SO NOT FOUND")
+
+                frappe.log_error(
+                    external_shipment_id,
+                    "SO NOT FOUND"
+                )
+
                 continue
 
-            so = frappe.get_doc("Sales Order", so_name)
+            so = frappe.get_doc(
+                "Sales Order",
+                so_name
+            )
+
+            # -------------------------------------------------
+            # Submit SO
+            # -------------------------------------------------
 
             if so.docstatus == 0:
+
                 try:
+
                     so.save(ignore_permissions=True)
+
                     so.submit()
-                    so.db_set("status", "Deliver And Bill", update_modified=False)
+
+                    so.db_set(
+                        "status",
+                        "Deliver And Bill",
+                        update_modified=False
+                    )
 
                 except Exception:
-                    frappe.log_error(frappe.get_traceback(), "SO Submit Failed")
+
+                    frappe.log_error(
+                        frappe.get_traceback(),
+                        f"SO Submit Failed | {so.name}"
+                    )
+
                     continue
+
+            # -------------------------------------------------
+            # Prevent Duplicate DN
+            # -------------------------------------------------
 
             existing_dn = frappe.db.get_value(
                 "Delivery Note Item",
-                {"against_sales_order": so.name},
+                {
+                    "against_sales_order": so.name
+                },
                 "parent"
             )
 
             if existing_dn:
-                frappe.log_error(f"DN already exists for {so.name}", "DN SKIPPED")
+
+                frappe.log_error(
+                    f"DN already exists for {so.name}",
+                    "DN SKIPPED"
+                )
+
                 continue
+
+            # -------------------------------------------------
+            # Create Delivery Note
+            # -------------------------------------------------
 
             try:
+
                 dn = make_delivery_note(so.name)
+
             except Exception:
-                frappe.log_error(str(frappe.get_traceback()), "make_delivery_note FAILED")
+
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    "make_delivery_note FAILED"
+                )
+
                 continue
 
+            # -------------------------------------------------
+            # DN Fields
+            # -------------------------------------------------
+
             dn.posting_date = nowdate()
-            dn.custom_tracking_number = tracking_number
-            dn.custom_tracking_url = tracking_url
-            dn.custom_linked_etsy_shiping_id = external_shipment_id
-            dn.custom_carrier_name = carrier_name
-            dn.custom_note_to_buyer = so.custom_note_from_seller
-            dn.custom_carrier_id = carrier_id
-            dn.custom_processed_webhook_url = resource_url
 
-            shipment_cost = label.get("shipment_cost", {})
-            shipment_amount = shipment_cost.get("amount",0)
-            
-            insurance_cost = label.get("insurance_cost", {})
-            insurance_amount = insurance_cost.get("amount",0)
+            dn.custom_tracking_number = (
+                tracking_number
+            )
 
-            # if shipment_amount:
-            #     try:
-            #         shipping_account = frappe.get_value(
-            #             "Account",
-            #             {"account_name": "Shipping Charges"},
-            #             "name"
-            #         )
+            dn.custom_tracking_url = (
+                tracking_url
+            )
 
-            #         if shipping_account:
-            #             dn.append("taxes", {
-            #                 "charge_type": "Actual",
-            #                 "account_head": shipping_account,
-            #                 "description": "ShipStation Shipping Cost",
-            #                 "tax_amount": shipment_amount
-            #             })
-            #     except Exception:
-            #         frappe.log_error(frappe.get_traceback(), "Shipping Tax Failed")
+            dn.custom_linked_etsy_shiping_id = (
+                external_shipment_id
+            )
 
-            # ✅ Packages
+            dn.custom_carrier_name = (
+                carrier_name
+            )
+
+            dn.custom_note_to_buyer = (
+                so.custom_note_from_seller
+            )
+
+            dn.custom_carrier_id = (
+                carrier_id
+            )
+
+            dn.custom_processed_webhook_url = (
+                resource_url
+            )
+
+            dn.marketplace = (
+                so.custom_marketplace
+            )
+
+            # -------------------------------------------------
+            # Shipping Cost
+            # -------------------------------------------------
+
+            shipment_cost = (
+                label.get("shipment_cost", {})
+            )
+
+            shipment_amount = (
+                shipment_cost.get("amount", 0)
+            )
+
+            insurance_cost = (
+                label.get("insurance_cost", {})
+            )
+
+            insurance_amount = (
+                insurance_cost.get("amount", 0)
+            )
+
+            dn.custom_shipping_cost = (
+                shipment_amount +
+                insurance_amount
+            )
+
+            # -------------------------------------------------
+            # Packages
+            # -------------------------------------------------
+
             packages = label.get("packages", [])
 
             for pkg in packages:
+
                 dims = pkg.get("dimensions", {})
                 weight = pkg.get("weight", {})
 
-                dn.custom_uom_for_dimension = dims.get("unit")
-                dn.custom_uom_for_weight = weight.get("unit")
+                dn.custom_uom_for_dimension = (
+                    dims.get("unit")
+                )
+
+                dn.custom_uom_for_weight = (
+                    weight.get("unit")
+                )
 
                 dn.append("custom_packages", {
-                    "length": dims.get("length") or 0,
-                    "width": dims.get("width") or 0,
-                    "height": dims.get("height") or 0,
-                    "weight": weight.get("value") or 0,
+
+                    "length":
+                        dims.get("length") or 0,
+
+                    "width":
+                        dims.get("width") or 0,
+
+                    "height":
+                        dims.get("height") or 0,
+
+                    "weight":
+                        weight.get("value") or 0,
+
                     "count": 1
+
                 })
 
+            # -------------------------------------------------
+            # Warehouse + Valuation Fix
+            # -------------------------------------------------
+
+            default_warehouse = frappe.db.get_value(
+                "Warehouse",
+                {
+                    "company": so.company,
+                    "is_group": 0
+                },
+                "name"
+            )
+
+            for item in dn.items:
+
+                # -----------------------------------------
+                # Allow Zero Valuation
+                # -----------------------------------------
+
+                item.allow_zero_valuation_rate = 1
+
+                # -----------------------------------------
+                # Fix Invalid Warehouse
+                # -----------------------------------------
+
+                if item.warehouse:
+
+                    is_group = frappe.db.get_value(
+                        "Warehouse",
+                        item.warehouse,
+                        "is_group"
+                    )
+
+                    if (
+                        (
+                            is_group
+                            or "All Warehouses"
+                            in item.warehouse
+                        )
+                        and default_warehouse
+                    ):
+
+                        item.warehouse = (
+                            default_warehouse
+                        )
+
+            # -------------------------------------------------
+            # Save + Submit DN
+            # -------------------------------------------------
+
             try:
-                dn.custom_shipping_cost=shipment_amount+insurance_amount
-                dn.save(ignore_permissions=True)
+
+                dn.flags.ignore_validate = True
+                dn.flags.ignore_validate_update_after_submit = True
+
+
                 dn.submit()
-                dn.db_set("per_billed", 100, update_modified=False)
-                dn.db_set("status", "Completed", update_modified=False)
-                so.db_set("status", "Deliver And Bill", update_modified=False)
-                
+
+                dn.db_set(
+                    "per_billed",
+                    100,
+                    update_modified=False
+                )
+
+                dn.db_set(
+                    "status",
+                    "Completed",
+                    update_modified=False
+                )
+
+                so.db_set(
+                    "status",
+                    "Deliver And Bill",
+                    update_modified=False
+                )
+
                 frappe.db.commit()
 
-                frappe.log_error(f"DN CREATED: {dn.name}", "SUCCESS")
+                log=frappe.log_error(
+                    f"DN CREATED: {dn.name}",
+                    "SUCCESS"
+                )
+                
+                attach_dn_error(
+                    dn.name,
+                    log.name
+                )
 
             except Exception:
-                frappe.log_error(frappe.get_traceback(), "DN Save/Submit Failed")
+
+                frappe.db.rollback()
+
+                error = frappe.get_traceback()
+
+                log=frappe.log_error(
+                    message=error,
+                    title=f"DN Save/Submit Failed | SO: {so.name}"
+                )
+
+                attach_dn_error(
+                    dn.name if dn else None,
+                    log.name
+                )
+
                 continue
 
+
         except Exception:
-            frappe.log_error(frappe.get_traceback(), "FULL LOOP FAILED")
+
+            frappe.db.rollback()
+
+            error = frappe.get_traceback()
+
+            log=frappe.log_error(
+                error,
+                "FULL LOOP FAILED"
+            )
+
+            attach_dn_error(
+            dn.name if 'dn' in locals() and dn else None,
+            log.name
+        )
+
+
             continue
 
     return "Webhook Processed"
+
+def attach_dn_error(dn_name, log_name):
+    try:
+
+        if not dn_name:
+            return
+
+        frappe.db.set_value(
+            "Delivery Note",
+            dn_name,
+            "custom_error_log",
+            log_name,
+            update_modified=False
+        )
+
+    except Exception:
+        pass
 
 def get_or_create_sales_order(receipt_id):
 
@@ -776,11 +1069,26 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     if hold_dt:
         hold_until_date = hold_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    external_shipment_id = (
-    so.name
-    if "erpnext" in (so.custom_marketplace or "").lower()
-    else so.custom_marketplace_order_id
-)
+    settings = frappe.get_single("Shipstation Settings")
+
+    external_shipment_id = so.custom_marketplace_order_id
+
+    for row in settings.table_owiy:
+
+        marketplace = (row.marketplace or "").lower()
+        current_marketplace = (so.custom_marketplace or "").lower()
+
+        if marketplace in current_marketplace:
+
+            if row.fields:
+
+                if row.fields == "name":
+                    external_shipment_id = so.name
+
+                elif hasattr(so, row.fields):
+                    external_shipment_id = so.get(row.fields)
+
+                break
     # create_address_if_not_exists(customer, receipt)
     # -----------------------------
     # Payload
@@ -790,7 +1098,8 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
             {
                 "validate_address": "no_validation",
                 "external_shipment_id": external_shipment_id ,
-                "carrier_id": carrier_row.carrier_id,
+                # "carrier_id": carrier_row.carrier_id,
+                "carrier_id": "se-5542533",
                 "create_sales_order": bool(config["create_sales_order"]),
                 "store_id": None,
                 "notes_from_buyer": so.po_no or "",
@@ -831,8 +1140,7 @@ def create_so(doc=None,method=None,payload=None,synced_to_shipstation=None):
     # API Call
     # -----------------------------
     # so.save(ignore_permissions=True)
-    
-    
+    config["headers"]["API-key"]="26Wwi6+XeV2/NT0piRkblyj2jUY1vu0zRUl+8m/lUwk"
     url = f"{config['base_url']}/shipments"
     response = requests.post(
         url,
@@ -1309,3 +1617,10 @@ def create_and_set_address(customer, receipt):
     address.insert(ignore_permissions=True)
     
     return address.name
+
+
+def sales_order_sync_wrapper(doc, method=None):
+    run_sales_order_sync(
+        woocommerce_order_name=doc.name,
+        woocommerce_order=doc
+    )

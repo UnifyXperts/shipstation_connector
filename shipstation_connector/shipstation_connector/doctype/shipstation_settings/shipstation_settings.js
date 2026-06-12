@@ -1,4 +1,25 @@
 frappe.ui.form.on("Shipstation Settings", {
+    refresh(frm) {
+
+        frappe.model.with_doctype("Sales Order", () => {
+
+            let meta = frappe.get_meta("Sales Order");
+
+            let options = meta.fields
+                .map(df => df.fieldname)
+                .filter(Boolean)
+            options.unshift("name");
+
+            options.join("\n")
+
+            frm.fields_dict.table_owiy.grid.update_docfield_property(
+                "fields",
+                "options",
+                options
+            );
+        });
+    },
+    
 
     update_carriers(frm){
         
@@ -69,3 +90,4 @@ frappe.ui.form.on("Shipstation Settings", {
     
 
 });
+
