@@ -87,7 +87,7 @@ app_license = "mit"
 
 # before_install = "shipstation_connector.install.before_install"
 # after_install = "shipstation_connector.install.after_install"
-
+fixtures=["Marketplace"]
 # Uninstallation
 # ------------
 
@@ -136,7 +136,8 @@ doc_events = {
 	"Sales Order": {
 		"after_insert": [
     # "shipstation_connector.shipstation_connector.api.api.create_and_set_address",
-                   "shipstation_connector.shipstation_connector.api.shipstation_connector.create_so"]
+                # "shipstation_connector.shipstation_connector.api.shipstation_connector.create_so"
+                ]
 	    }
 }
 
